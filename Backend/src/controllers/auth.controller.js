@@ -3,6 +3,16 @@ const bcrypt=require("bcryptjs");
 const jwt=require("jsonwebtoken");
 const tokenBlacklistModel=require("../models/blacklist.model");
 
+// Cross-origin cookie settings for production (frontend and backend live on
+// different Render subdomains). In dev (localhost, same-site) "lax" +
+// non-secure works fine since Render/production is served over HTTPS.
+const cookieOptions = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    maxAge: 24 * 60 * 60 * 1000 // 1 day, matches JWT expiresIn
+}
+
 async function registerUserController(req,res){
     try{ 
     const {username,email,password}=req.body;
@@ -31,7 +41,7 @@ async function registerUserController(req,res){
         process.env.JWT_SECRET,
         { expiresIn: '1d' }
     )
-    res.cookie("token",token)
+    res.cookie("token",token,cookieOptions)
 
     res.status(201).json({
         message:"User registered successfully",
@@ -48,47 +58,44 @@ async function registerUserController(req,res){
         });
     }
 }
-async function loginUserController(req,res){
-    console.log("login controller hit");
+async function loginUserController(req,res,next){
+    try {
+        const {email,password}=req.body;
 
-    const {email,password}=req.body;
-    console.log(email, password);
+        const user=await userModel.findOne({email});
 
-    const user=await userModel.findOne({email});
-    console.log("user:", user);
+        if(!user){
+            return res.status(400).json({message:"Invalid email or password"});
+        }
 
-    if(!user){
-        return res.status(400).json({message:"Invalid email or password"});
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+
+        if(!isPasswordValid){
+            return res.status(400).json({message:"Invalid email or password"});
+        }
+
+        const token=jwt.sign(
+            {
+                id:user._id,
+                username:user.username
+            },
+            process.env.JWT_SECRET,
+            { expiresIn:'1d' }
+        );
+
+        res.cookie("token",token,cookieOptions);
+
+        res.status(200).json({
+            message:"User logged in successfully",
+            user:{
+                id:user._id,
+                username:user.username,
+                email:user.email
+            }
+        });
+    } catch (error) {
+        next(error)
     }
-
-   console.log("before bcrypt");
-
-   const isPasswordValid = await bcrypt.compare(password, user.password);
-
-   console.log("after bcrypt", isPasswordValid);
-
-    console.log("password valid:", isPasswordValid);
-
-    if(!isPasswordValid){
-        return res.status(400).json({message:"Invalid email or password"});
-    }
-
-    const token=jwt.sign(
-        {
-            id:user._id,
-            username:user.username
-        },
-        process.env.JWT_SECRET,
-        { expiresIn:'1d' }
-    );
-
-    console.log("token created");
-
-    res.cookie("token",token);
-
-    res.status(200).json({
-        message:"User logged in successfully"
-    });
 }
 
 async function logoutUserController(req,res){
@@ -97,7 +104,7 @@ async function logoutUserController(req,res){
         if(token){
             await tokenBlacklistModel.create({token});
         }
-        res.clearCookie("token");
+        res.clearCookie("token",cookieOptions);
         res.status(200).json({message:"User logged out successfully"});
     } catch (error) {
         res.status(500).json({message:error.message});
