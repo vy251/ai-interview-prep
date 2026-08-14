@@ -16,27 +16,27 @@ const interviewReportSchema = z.object({
       intention: z.string(),
       answer: z.string(),
     }),
-  ),
+  ).min(6),
   behavioralQuestions: z.array(
     z.object({
       question: z.string(),
       intention: z.string(),
       answer: z.string(),
     }),
-  ),
+  ).min(5),
   skillGaps: z.array(
     z.object({
       skill: z.string(),
       severity: z.enum(["low", "medium", "high"]),
     }),
-  ),
+  ).min(1),
   preparationPlan: z.array(
     z.object({
       day: z.number(),
       focus: z.string(),
       tasks: z.array(z.string()),
     }),
-  ),
+  ).min(5).max(14),
   title: z.string(),
 });
 
@@ -51,8 +51,9 @@ const geminiResponseSchema = {
     },
     technicalQuestions: {
       type: Type.ARRAY,
+      minItems: 6,
       description:
-        "Technical questions that can be asked in the interview along with their intention and how to answer them",
+        "Technical questions that can be asked in the interview along with their intention and how to answer them. Generate AT LEAST 6, covering distinct technical areas (not near-duplicates).",
       items: {
         type: Type.OBJECT,
         properties: {
@@ -75,8 +76,9 @@ const geminiResponseSchema = {
     },
     behavioralQuestions: {
       type: Type.ARRAY,
+      minItems: 5,
       description:
-        "Behavioral questions that can be asked in the interview along with their intention and how to answer them",
+        "Behavioral questions that can be asked in the interview along with their intention and how to answer them. Generate AT LEAST 5, covering distinct scenarios (not near-duplicates).",
       items: {
         type: Type.OBJECT,
         properties: {
@@ -99,8 +101,9 @@ const geminiResponseSchema = {
     },
     skillGaps: {
       type: Type.ARRAY,
+      minItems: 1,
       description:
-        "List of skill gaps in the candidate's profile along with their severity",
+        "List of EVERY genuine skill gap found in the candidate's profile relative to the job description, along with their severity. Do NOT artificially limit this list — if the candidate has 8 real gaps, list all 8; if only 2, list only 2.",
       items: {
         type: Type.OBJECT,
         properties: {
@@ -119,8 +122,10 @@ const geminiResponseSchema = {
     },
     preparationPlan: {
       type: Type.ARRAY,
+      minItems: 5,
+      maxItems: 14,
       description:
-        "A day-wise preparation plan for the candidate to follow in order to prepare for the interview effectively",
+        "A day-wise preparation plan for the candidate to follow in order to prepare for the interview effectively. The number of days should scale with the number and severity of skillGaps identified (roughly 1-2 days per significant gap), minimum 5 days, maximum 14 days.",
       items: {
         type: Type.OBJECT,
         properties: {
@@ -275,15 +280,28 @@ Return ONLY the following top-level fields — no others:
 - title (string)
 
 CRITICAL FORMAT RULES:
-- technicalQuestions and behavioralQuestions: array of OBJECTS. Each object
-  MUST look exactly like this shape (a single JSON object per array element,
-  NOT separate key/value entries):
+- technicalQuestions: array of OBJECTS. Generate AT LEAST 6 questions,
+  covering DIFFERENT technical areas drawn from the resume/job description
+  (e.g. different projects, different technologies, different concepts) —
+  do not generate near-duplicate questions. Each object MUST look exactly
+  like this shape (a single JSON object per array element, NOT separate
+  key/value entries):
   { "question": "...", "intention": "...", "answer": "..." }
+- behavioralQuestions: array of OBJECTS, shaped the same way. Generate AT
+  LEAST 5 questions, covering different scenarios (teamwork, conflict,
+  failure, leadership, time management, learning, etc.) — not near-duplicates.
 - skillGaps: array of OBJECTS shaped exactly like:
   { "skill": "...", "severity": "low" | "medium" | "high" }
+  List EVERY genuine skill gap you find relative to the job description.
+  Do NOT artificially cap this list at a small number — if there are 8 real
+  gaps, list all 8. If there are only 2, list only 2. Be honest and thorough.
 - preparationPlan: array of OBJECTS shaped exactly like:
   { "day": 1, "focus": "...", "tasks": ["...", "..."] }
   ("tasks" must be an array of strings, even if there is only one task.)
+  The NUMBER OF DAYS must scale with the skillGaps you identified — roughly
+  1-2 days per significant gap — with a MINIMUM of 5 days and a MAXIMUM of
+  14 days. A candidate with many/severe gaps should get a longer plan than
+  one with few/minor gaps.
 
 Do NOT flatten any array into a list of alternating keys and values.
 Do NOT return objects as JSON strings. Return real nested JSON objects.
